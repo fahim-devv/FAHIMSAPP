@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="webTitle">FAHIMSAPP - Realtime Chat</title>
+    <style>
+        /* WhatsApp Dark Theme Style */
+        body {
+            background-color: #0b141a;
+            color: #e9edef;
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh;
+        }
+        .screen {
+            display: none; width: 100%; max-width: 450px; height: 100vh;
+            background-color: #111b21; box-shadow: 0 0 15px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        .active { display: flex; flex-direction: column; }
+        .auth-container { padding: 30px; display: flex; flex-direction: column; justify-content: center; height: 80%; }
+        .auth-container h2 { color: #00a884; text-align: center; margin-bottom: 25px; }
+        input, select { background-color: #2a3942; border: none; color: #d1d7db; padding: 12px; margin-bottom: 15px; border-radius: 8px; font-size: 15px; outline: none; }
+        .btn { background-color: #00a884; color: #111b21; border: none; padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .auth-link { text-align: center; color: #00a884; margin-top: 15px; cursor: pointer; font-size: 14px; }
+        header { background-color: #202c33; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .tabs { display: flex; background-color: #202c33; border-bottom: 1px solid #2a3942; }
+        .tab { flex: 1; text-align: center; padding: 12px 0; cursor: pointer; color: #8696a0; font-weight: bold; font-size: 14px; }
+        .tab.active-tab { color: #00a884; border-bottom: 3px solid #00a884; }
+        .list-container { flex: 1; overflow-y: auto; padding: 10px; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background-color: #202c33; margin-bottom: 8px; border-radius: 8px; cursor: pointer; }
+        .list-item:hover { background-color: #2a3942; }
+        .chat-view { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #111b21; z-index: 150; flex-direction: column; }
+        .chat-container { flex: 1; overflow-y: auto; padding: 15px; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); display: flex; flex-direction: column; }
+        .msg-box { max-width: 75%; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; font-size: 15px; word-wrap: break-word; }
+        .msg-sent { background-color: #005c4b; align-self: flex-end; margin-left: auto; }
+        .msg-rec { background-color: #202c33; align-self: flex-start; }
+        .msg-info { font-size: 11px; color: #8696a0; margin-bottom: 2px; }
+        .input-area { background-color: #202c33; padding: 10px; display: flex; gap: 10px; align-items: center; }
+        .input-area input { flex: 1; margin: 0; }
+        .floating-btn { position: absolute; bottom: 20px; right: 20px; background-color: #00a884; color: #111b21; width: 55px; height: 55px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 28px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4); border: none; z-index: 100; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 300; }
+        .modal-content { background-color: #222e35; padding: 25px; border-radius: 10px; width: 85%; max-width: 350px; border: 1px solid #00a884; }
+    </style>
+</head>
+<body>
+
+    <div id="signupScreen" class="screen active">
+        <div class="auth-container">
+            <h2 id="appNameRegister">FAHIMSAPP</h2>
+            <input type="text" id="regName" placeholder="Full Name" required>
+            <input type="number" id="regAge" placeholder="Age" required>
+            <input type="text" id="regPhone" placeholder="Phone Number" required>
+            <input type="password" id="regPass" placeholder="Password (Permanent)" required>
+            <button class="btn" onclick="handleSignup()">Sign Up</button>
+            <div class="auth-link" onclick="switchScreen('loginScreen')">Already have an account? Login</div>
+        </div>
+    </div>
+
+    <div id="loginScreen" class="screen">
+        <div class="auth-container">
+            <h2 id="appNameLogin">FAHIMSAPP Login</h2>
+            <input type="text" id="loginPhone" placeholder="Phone Number" required>
+            <input type="password" id="loginPass" placeholder="Password" required>
+            <button class="btn" onclick="handleLogin()">Login</button>
+            <div class="auth-link" onclick="switchScreen('signupScreen')">New here? Create an account</div>
+        </div>
+    </div>
+
+    <div id="mainDashboard" class="screen">
+        <header>
+            <div>
+                <span id="displayAppName" style="font-weight: bold; font-size: 18px;">FAHIMSAPP</span>
+                <span id="adminBadge" style="display:none; background:#e91e63; color:white; padding:2px 6px; border-radius:4px; font-size:11px; margin-left:5px;">ADMIN</span>
+            </div>
+            <button id="adminMenuBtn" class="btn" style="margin:0; padding:5px 10px; font-size:12px; background:#e91e63; color:white; display:none;" onclick="toggleAdminModal()">Admin Settings</button>
+        </header>
+
+        <div class="tabs">
+            <div id="tab-contacts" class="tab active-tab" onclick="switchTab('contacts')">Contacts</div>
+            <div id="tab-groups" class="tab" onclick="switchTab('groups')">Groups</div>
+            <div id="tab-channels" class="tab" onclick="switchTab('channels')">Channels</div>
+        </div>
+
+        <div class="list-container" id="contentList"></div>
+        <button class="floating-btn" onclick="openAddModal()">+</button>
+    </div>
+
+    <div id="chatViewWindow" class="chat-view">
+        <header style="background-color: #202c33;">
+            <button class="btn" style="background:none; color:#00a884; margin:0; padding:5px; font-size:18px;" onclick="closeChatWindow()">➔ Back</button>
+            <h3 id="chatTargetName" style="flex:1; margin-left:15px;">Chat Name</h3>
+        </header>
+        <div class="chat-container" id="chatMessageArea"></div>
+        <div class="input-area">
+            <input type="text" id="msgInput" placeholder="Type a message...">
+            <button class="btn" style="margin:0; padding:10px 20px;" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:#00a884;">Create or Add</h3>
+            <select id="addType" onchange="toggleModalFields()" style="width:100%;">
+                <option value="contact">Add New Contact Number</option>
+                <option value="group">Create New Group</option>
+                <option value="channel">Create New Channel</option>
+            </select>
+            <input type="text" id="addNameInput" placeholder="Enter Phone Number" style="width:92%;">
+            <button class="btn" style="width:100%;" onclick="executeAddAction()">Add Now</button>
+            <button class="btn" style="width:100%; background:#555; color:white; margin-top:5px;" onclick="closeAddModal()">Cancel</button>
+        </div>
+    </div>
+
+    <div id="adminModal" class="modal">
+        <div class="modal-content" style="border-color: #e91e63;">
+            <h3 style="margin-top:0; color:#e91e63;">Admin Control Panel</h3>
+            <input type="text" id="newAppName" placeholder="Change Web Name" style="width:92%;">
+            <button class="btn" style="width:100%;" onclick="changeWebName()">Update Name</button>
+            <hr style="border-color:#2a3942; margin:15px 0;">
+            <input type="text" id="banPhone" placeholder="Phone Number to Ban" style="width:92%;">
+            <button class="btn" style="width:100%; background:#ff0055; color:white;" onclick="banUser()">Ban User Account</button>
+            <button class="btn" style="width:100%; background:#555; color:white; margin-top:10px;" onclick="closeAdminModal()">Close</button>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        // 🛠️ Your actual Firebase configuration loaded directly
+        const firebaseConfig = {
+            apiKey: "AIzaSyAlVYGyABo1nqYUXPDmhgK3",
+            authDomain: "fahimsapp-97c17.firebaseapp.com",
+            databaseURL: "https://fahimsapp-97c17-default-rtdb.firebaseio.com",
+            projectId: "fahimsapp-97c17",
+            storageBucket: "fahimsapp-97c17.appspot.com",
+            messagingSenderId: "662966170863",
+            appId: "1:662966170863:web:b10bf3ee40"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let currentUser = null;
+        let currentTab = 'contacts';
+        let activeChatTarget = null;
+        let msgListener = null;
+        const ADMIN_NUMBER = "01719286766";
+
+        // Listen for App Name changes live
+        db.ref('appSettings/name').on('value', (snapshot) => {
+            let name = snapshot.val() || "FAHIMSAPP";
+            document.getElementById('webTitle').innerText = name + " - Realtime Chat";
+            document.getElementById('appNameRegister').innerText = name;
+            document.getElementById('appNameLogin').innerText = name + " Login";
+            document.getElementById('displayAppName').innerText = name;
+        });
+
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function handleSignup() {
+            let name = document.getElementById('regName').value.trim();
+            let age = document.getElementById('regAge').value.trim();
+            let phone = document.getElementById('regPhone').value.trim();
+            let pass = document.getElementById('regPass').value.trim();
+
+            if(!name || !age || !phone || !pass) { alert("Please fill all details!"); return; }
+
+            db.ref('users/' + phone).once('value', (snapshot) => {
+                if(snapshot.exists()) {
+                    alert("This phone number is already registered!");
+                } else {
+                    db.ref('users/' + phone).set({ name: name, age: age, password: pass }, (err) => {
+                        if(!err) {
+                            alert("Sign Up Successful! Please log in.");
+                            switchScreen('loginScreen');
+                        }
+                    });
+                }
+            });
+        }
+
+        function handleLogin() {
+            let phone = document.getElementById('loginPhone').value.trim();
+            let pass = document.getElementById('loginPass').value.trim();
+
+            if(!phone || !pass) { alert("Enter phone and password!"); return; }
+
+            db.ref('banned/' + phone).once('value', (banSnap) => {
+                if(banSnap.val() === true) {
+                    alert("❌ Your account has been BANNED by Admin!");
+                    return;
+                }
+
+                db.ref('users/' + phone).once('value', (snapshot) => {
+                    let user = snapshot.val();
+                    if(user && user.password === pass) {
+                        currentUser = { phone: phone, name: user.name };
+                        switchScreen('mainDashboard');
+                        
+                        if(phone === ADMIN_NUMBER) {
+                            document.getElementById('adminBadge').style.display = 'inline-block';
+                            document.getElementById('adminMenuBtn').style.display = 'block';
+                        }
+                        
+                        listenToDataUpdates();
+                    } else {
+                        alert("❌ Invalid credentials!");
+                    }
+                });
+            });
+        }
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active-tab'));
+            document.getElementById(`tab-${tabName}`).classList.add('active-tab');
+            renderList();
+        }
+
+        function listenToDataUpdates() {
+            db.ref('users').on('value', renderList);
+            db.ref('groups').on('value', renderList);
+            db.ref('channels').on('value', renderList);
+            db.ref('userChats/' + currentUser.phone + '/contacts').on('value', renderList);
+        }
+
+        function renderList() {
+            let container = document.getElementById('contentList');
+            container.innerHTML = "";
+
+            if(!currentUser) return;
+
+            if (currentTab === 'contacts') {
+                if(currentUser.phone === ADMIN_NUMBER) {
+                    db.ref('users').once('value', (snap) => {
+                        let users = snap.val() || {};
+                        Object.keys(users).forEach(phone => {
+                            if(phone !== ADMIN_NUMBER) {
+                                createListItem(phone, users[phone].name, 'contacts', container);
+                            }
+                        });
+                    });
+                } else {
+                    db.ref('userChats/' + currentUser.phone + '/contacts').once('value', (snap) => {
+                        let contacts = snap.val() || {};
+                        Object.keys(contacts).forEach(phone => {
+                            createListItem(phone, contacts[phone], 'contacts', container);
+                        });
+                    });
+                }
+            } else if (currentTab === 'groups') {
+                db.ref('groups').once('value', (snap) => {
+                    let groups = snap.val() || {};
+                    Object.keys(groups).forEach(gid => {
+                        createListItem(gid, groups[gid].name, 'groups', container);
+                    });
+                });
+            } else if (currentTab === 'channels') {
+                db.ref('channels').once('value', (snap) => {
+                    let channels = snap.val() || {};
+                    Object.keys(channels).forEach(cid => {
+                        createListItem(cid, channels[cid].name, 'channels', container);
+                    });
+                });
+            }
+        }
+
+        function createListItem(id, name, type, container) {
+            let item = document.createElement('div');
+            item.className = 'list-item';
+            item.innerHTML = `<div><strong>${name}</strong><br><span style="color:#8696a0; font-size:11px;">${type === 'contacts' ? id : 'Room ID: ' + id}</span></div>`;
+            item.onclick = () => openChat(id, name, type);
+            container.appendChild(item);
+        }
+
+        function openChat(id, name, type) {
+            activeChatTarget = { id: id, name: name, type: type };
+            document.getElementById('chatTargetName').innerText = name;
+            document.getElementById('chatViewWindow').style.display = 'flex';
+            
+            let chatId = type === 'contacts' ? ([currentUser.phone, id].sort().join('_')) : id;
+            
+            if(msgListener) msgListener.off();
+
+            msgListener = db.ref('messages/' + chatId);
+            msgListener.on('value', (snapshot) => {
+                let area = document.getElementById('chatMessageArea');
+                area.innerHTML = "";
+                let msgs = snapshot.val() || {};
+                Object.keys(msgs).forEach(k => {
+                    let msg = msgs[k];
+                    let isMe = msg.senderPhone === currentUser.phone;
+                    let msgDiv = document.createElement('div');
+                    msgDiv.className = `msg-box ${isMe ? 'msg-sent' : 'msg-rec'}`;
+                    msgDiv.innerHTML = `<div class="msg-info">${msg.senderName} • ${msg.time}</div><div>${msg.text}</div>`;
+                    area.appendChild(msgDiv);
+                });
+                area.scrollTop = area.scrollHeight;
+            });
+        }
+
+        function closeChatWindow() {
+            document.getElementById('chatViewWindow').style.display = 'none';
+            if(msgListener) msgListener.off();
+            activeChatTarget = null;
+        }
+
+        function sendMessage() {
+            let text = document.getElementById('msgInput').value.trim();
+            if(!text || !activeChatTarget) return;
+
+            let chatId = activeChatTarget.type === 'contacts' ? ([currentUser.phone, activeChatTarget.id].sort().join('_')) : activeChatTarget.id;
+
+            let newMsgRef = db.ref('messages/' + chatId).push();
+            newMsgRef.set({
+                senderPhone: currentUser.phone,
+                senderName: currentUser.name,
+                text: text,
+                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+            });
+
+            document.getElementById('msgInput').value = "";
+        }
+
+        function openAddModal() { document.getElementById('addModal').style.display = 'flex'; }
+        function closeAddModal() { document.getElementById('addModal').style.display = 'none'; }
+        function toggleAdminModal() { document.getElementById('adminModal').style.display = 'flex'; }
+        function closeAdminModal() { document.getElementById('adminModal').style.display = 'none'; }
+
+        function toggleModalFields() {
+            let type = document.getElementById('addType').value;
+            let input = document.getElementById('addNameInput');
+            input.placeholder = (type === 'contact') ? "Enter Phone Number" : "Enter Name";
+        }
+
+        function executeAddAction() {
+            let type = document.getElementById('addType').value;
+            let val = document.getElementById('addNameInput').value.trim();
+            if(!val) return;
+
+            if(type === 'contact') {
+                db.ref('users/' + val).once('value', (snapshot) => {
+                    if(!snapshot.exists()) {
+                        alert("This phone number is not registered!");
+                    } else {
+                        db.ref('userChats/' + currentUser.phone + '/contacts/' + val).set(snapshot.val().name);
+                        alert("Contact added!");
+                        closeAddModal();
+                    }
+                });
+            } else {
+                let refPath = type === 'group' ? 'groups' : 'channels';
+                let newId = (type === 'group' ? 'grp_' : 'chn_') + Date.now();
+                db.ref(refPath + '/' + newId).set({ name: val });
+                alert(`${type.toUpperCase()} created successfully!`);
+                closeAddModal();
+            }
+        }
+
+        function changeWebName() {
+            let name = document.getElementById('newAppName').value.trim();
+            if(!name) return;
+            db.ref('appSettings/name').set(name);
+            closeAdminModal();
+        }
+
+        function banUser() {
+            let phone = document.getElementById('banPhone').value.trim();
+            if(!phone || phone === ADMIN_NUMBER) return;
+            db.ref('banned/' + phone).set(true);
+            alert(`User ${phone} banned from platform.`);
+            closeAdminModal();
+        }
+    </script>
+</body>
+</html>
