@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="webTitle">FAHIMSAPP - Realtime Chat</title>
+    <title id="webTitle">FAHIMSAPP - Realtime Chat & Call</title>
     <style>
         /* WhatsApp Dark Theme Style */
         body {
@@ -43,6 +43,16 @@
         .floating-btn { position: absolute; bottom: 20px; right: 20px; background-color: #00a884; color: #111b21; width: 55px; height: 55px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 28px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4); border: none; z-index: 100; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 300; }
         .modal-content { background-color: #222e35; padding: 25px; border-radius: 10px; width: 85%; max-width: 350px; border: 1px solid #00a884; }
+        
+        /* Calling UI Overlay */
+        .call-screen { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #0b141a; z-index: 500; flex-direction: column; align-items: center; justify-content: space-around; color: white; text-align: center; }
+        .avatar-circle { width: 120px; height: 120px; background-color: #00a884; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 48px; font-weight: bold; color: #111b21; margin-bottom: 20px; box-shadow: 0 0 20px rgba(0, 168, 132, 0.4); }
+        .call-status { font-size: 16px; color: #8696a0; animation: blink 1.5s infinite; }
+        .call-actions { display: flex; gap: 40px; }
+        .call-btn { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; }
+        .btn-decline { background-color: #ea0038; color: white; }
+        .btn-accept { background-color: #00a884; color: white; }
+        @keyframes blink { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
     </style>
 </head>
 <body>
@@ -89,15 +99,28 @@
     </div>
 
     <div id="chatViewWindow" class="chat-view">
-        <header style="background-color: #202c33;">
-            <button class="btn" style="background:none; color:#00a884; margin:0; padding:5px; font-size:18px;" onclick="closeChatWindow()">➔ Back</button>
-            <h3 id="chatTargetName" style="flex:1; margin-left:15px;">Chat Name</h3>
+        <header style="background-color: #202c33; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; flex: 1;">
+                <button class="btn" style="background:none; color:#00a884; margin:0; padding:5px; font-size:18px;" onclick="closeChatWindow()">➔</button>
+                <h3 id="chatTargetName" style="margin-left:10px; margin-top: 0; margin-bottom: 0;">Chat Name</h3>
+            </div>
+            <button id="callActionBtn" class="btn" style="background: #00a884; color: #111b21; margin: 0; padding: 6px 14px; font-size: 14px;" onclick="startCallingLive()">📞 Call</button>
         </header>
         <div class="chat-container" id="chatMessageArea"></div>
         <div class="input-area">
             <input type="text" id="msgInput" placeholder="Type a message...">
             <button class="btn" style="margin:0; padding:10px 20px;" onclick="sendMessage()">Send</button>
         </div>
+    </div>
+
+    <div id="liveCallScreen" class="call-screen">
+        <div>
+            <div class="avatar-circle" id="callAvatar">📞</div>
+            <h2 id="callUserTitle" style="margin: 5px 0;">User Name</h2>
+            <div class="call-status" id="callStatusText">Calling...</div>
+        </div>
+        <div class="call-actions" id="callActionButtons">
+            </div>
     </div>
 
     <div id="addModal" class="modal">
@@ -130,7 +153,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // 🛠️ Your actual Firebase configuration loaded directly
+        // 🛠️ Your Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyAlVYGyABo1nqYUXPDmhgK3",
             authDomain: "fahimsapp-97c17.firebaseapp.com",
@@ -149,12 +172,13 @@
         let currentTab = 'contacts';
         let activeChatTarget = null;
         let msgListener = null;
+        let incomingCallListener = null;
         const ADMIN_NUMBER = "01719286766";
 
         // Listen for App Name changes live
         db.ref('appSettings/name').on('value', (snapshot) => {
             let name = snapshot.val() || "FAHIMSAPP";
-            document.getElementById('webTitle').innerText = name + " - Realtime Chat";
+            document.getElementById('webTitle').innerText = name + " - Realtime Chat & Call";
             document.getElementById('appNameRegister').innerText = name;
             document.getElementById('appNameLogin').innerText = name + " Login";
             document.getElementById('displayAppName').innerText = name;
@@ -211,6 +235,7 @@
                         }
                         
                         listenToDataUpdates();
+                        listenToCalls(); // Start listening for live call alerts!
                     } else {
                         alert("❌ Invalid credentials!");
                     }
@@ -286,6 +311,13 @@
             document.getElementById('chatTargetName').innerText = name;
             document.getElementById('chatViewWindow').style.display = 'flex';
             
+            // Hide call option for groups/channels
+            if(type !== 'contacts') {
+                document.getElementById('callActionBtn').style.display = 'none';
+            } else {
+                document.getElementById('callActionBtn').style.display = 'block';
+            }
+
             let chatId = type === 'contacts' ? ([currentUser.phone, id].sort().join('_')) : id;
             
             if(msgListener) msgListener.off();
@@ -329,6 +361,79 @@
 
             document.getElementById('msgInput').value = "";
         }
+
+        // ================== REALTIME CALL SYSTEM LOGIC ==================
+        function startCallingLive() {
+            if(!activeChatTarget || activeChatTarget.type !== 'contacts') return;
+            
+            let targetPhone = activeChatTarget.id;
+            
+            // Generate active call node
+            let callRef = db.ref('calls/' + targetPhone);
+            callRef.set({
+                callerPhone: currentUser.phone,
+                callerName: currentUser.name,
+                status: 'ringing'
+            });
+
+            // Show outgoing screen
+            document.getElementById('callUserTitle').innerText = activeChatTarget.name;
+            document.getElementById('callStatusText').innerText = "Ringing...";
+            document.getElementById('liveCallScreen').style.display = 'flex';
+            
+            let actionsArea = document.getElementById('callActionButtons');
+            actionsArea.innerHTML = `<button class="call-btn btn-decline" onclick="endActiveCall('${targetPhone}')">❌</button>`;
+
+            // Listen for acceptance or cancel
+            callRef.on('value', (snap) => {
+                let callData = snap.val();
+                if(!callData) {
+                    // Call ended by user or rejected
+                    document.getElementById('liveCallScreen').style.display = 'none';
+                    callRef.off();
+                } else if(callData.status === 'accepted') {
+                    document.getElementById('callStatusText').innerText = "Connected (In-Call Session Active)";
+                }
+            });
+        }
+
+        function listenToCalls() {
+            if(!currentUser) return;
+            incomingCallListener = db.ref('calls/' + currentUser.phone);
+            incomingCallListener.on('value', (snap) => {
+                let callData = snap.val();
+                if(callData) {
+                    if(callData.status === 'ringing') {
+                        // Incoming call screen trigger
+                        document.getElementById('callUserTitle').innerText = callData.callerName;
+                        document.getElementById('callStatusText').innerText = "Incoming Voice Call...";
+                        document.getElementById('liveCallScreen').style.display = 'flex';
+
+                        let actionsArea = document.getElementById('callActionButtons');
+                        actionsArea.innerHTML = `
+                            <button class="call-btn btn-decline" onclick="endActiveCall('${currentUser.phone}')">✖ Reject</button>
+                            <button class="call-btn btn-accept" onclick="acceptIncomingCall('${currentUser.phone}')">✔ Accept</button>
+                        `;
+                    }
+                } else {
+                    document.getElementById('liveCallScreen').style.display = 'none';
+                }
+            });
+        }
+
+        function acceptIncomingCall(nodeId) {
+            db.ref('calls/' + nodeId).update({ status: 'accepted' });
+            document.getElementById('callStatusText').innerText = "Connected (In-Call Session Active)";
+            
+            let actionsArea = document.getElementById('callActionButtons');
+            actionsArea.innerHTML = `<button class="call-btn btn-decline" onclick="endActiveCall('${nodeId}')">❌ End Call</button>`;
+        }
+
+        function endActiveCall(nodeId) {
+            db.ref('calls/' + nodeId).remove();
+            document.getElementById('liveCallScreen').style.display = 'none';
+        }
+        // ===================================================================
 
         function openAddModal() { document.getElementById('addModal').style.display = 'flex'; }
         function closeAddModal() { document.getElementById('addModal').style.display = 'none'; }
