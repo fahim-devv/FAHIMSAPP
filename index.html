@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="webTitle">FAHIMSAPP - Realtime Chat & Call</title>
+    <title id="webTitle">FAHIMSAPP - Realtime Chat & Audio Call</title>
     <style>
         /* WhatsApp Dark Theme Style */
         body {
@@ -49,13 +49,15 @@
         .avatar-circle { width: 120px; height: 120px; background-color: #00a884; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 48px; font-weight: bold; color: #111b21; margin-bottom: 20px; box-shadow: 0 0 20px rgba(0, 168, 132, 0.4); }
         .call-status { font-size: 16px; color: #8696a0; animation: blink 1.5s infinite; }
         .call-actions { display: flex; gap: 40px; }
-        .call-btn { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; }
+        .call-btn { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 16px; font-weight: bold; }
         .btn-decline { background-color: #ea0038; color: white; }
         .btn-accept { background-color: #00a884; color: white; }
         @keyframes blink { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
     </style>
 </head>
 <body>
+
+    <audio id="remoteAudio" autoplay></audio>
 
     <div id="signupScreen" class="screen active">
         <div class="auth-container">
@@ -119,8 +121,7 @@
             <h2 id="callUserTitle" style="margin: 5px 0;">User Name</h2>
             <div class="call-status" id="callStatusText">Calling...</div>
         </div>
-        <div class="call-actions" id="callActionButtons">
-            </div>
+        <div class="call-actions" id="callActionButtons"></div>
     </div>
 
     <div id="addModal" class="modal">
@@ -153,7 +154,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // 🛠️ Your Firebase configuration
+        // 🛠️ Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyAlVYGyABo1nqYUXPDmhgK3",
             authDomain: "fahimsapp-97c17.firebaseapp.com",
@@ -164,7 +165,6 @@
             appId: "1:662966170863:web:b10bf3ee40"
         };
         
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
@@ -175,10 +175,21 @@
         let incomingCallListener = null;
         const ADMIN_NUMBER = "01719286766";
 
-        // Listen for App Name changes live
+        // WebRTC Variables
+        let localStream = null;
+        let peerConnection = null;
+        let callRoomRef = null;
+        
+        const rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
         db.ref('appSettings/name').on('value', (snapshot) => {
             let name = snapshot.val() || "FAHIMSAPP";
-            document.getElementById('webTitle').innerText = name + " - Realtime Chat & Call";
+            document.getElementById('webTitle').innerText = name + " - Realtime Chat & Audio Call";
             document.getElementById('appNameRegister').innerText = name;
             document.getElementById('appNameLogin').innerText = name + " Login";
             document.getElementById('displayAppName').innerText = name;
@@ -235,7 +246,7 @@
                         }
                         
                         listenToDataUpdates();
-                        listenToCalls(); // Start listening for live call alerts!
+                        listenToCalls(); 
                     } else {
                         alert("❌ Invalid credentials!");
                     }
@@ -260,7 +271,6 @@
         function renderList() {
             let container = document.getElementById('contentList');
             container.innerHTML = "";
-
             if(!currentUser) return;
 
             if (currentTab === 'contacts') {
@@ -311,7 +321,6 @@
             document.getElementById('chatTargetName').innerText = name;
             document.getElementById('chatViewWindow').style.display = 'flex';
             
-            // Hide call option for groups/channels
             if(type !== 'contacts') {
                 document.getElementById('callActionBtn').style.display = 'none';
             } else {
@@ -319,7 +328,6 @@
             }
 
             let chatId = type === 'contacts' ? ([currentUser.phone, id].sort().join('_')) : id;
-            
             if(msgListener) msgListener.off();
 
             msgListener = db.ref('messages/' + chatId);
@@ -358,132 +366,4 @@
                 text: text,
                 time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             });
-
-            document.getElementById('msgInput').value = "";
-        }
-
-        // ================== REALTIME CALL SYSTEM LOGIC ==================
-        function startCallingLive() {
-            if(!activeChatTarget || activeChatTarget.type !== 'contacts') return;
-            
-            let targetPhone = activeChatTarget.id;
-            
-            // Generate active call node
-            let callRef = db.ref('calls/' + targetPhone);
-            callRef.set({
-                callerPhone: currentUser.phone,
-                callerName: currentUser.name,
-                status: 'ringing'
-            });
-
-            // Show outgoing screen
-            document.getElementById('callUserTitle').innerText = activeChatTarget.name;
-            document.getElementById('callStatusText').innerText = "Ringing...";
-            document.getElementById('liveCallScreen').style.display = 'flex';
-            
-            let actionsArea = document.getElementById('callActionButtons');
-            actionsArea.innerHTML = `<button class="call-btn btn-decline" onclick="endActiveCall('${targetPhone}')">❌</button>`;
-
-            // Listen for acceptance or cancel
-            callRef.on('value', (snap) => {
-                let callData = snap.val();
-                if(!callData) {
-                    // Call ended by user or rejected
-                    document.getElementById('liveCallScreen').style.display = 'none';
-                    callRef.off();
-                } else if(callData.status === 'accepted') {
-                    document.getElementById('callStatusText').innerText = "Connected (In-Call Session Active)";
-                }
-            });
-        }
-
-        function listenToCalls() {
-            if(!currentUser) return;
-            incomingCallListener = db.ref('calls/' + currentUser.phone);
-            incomingCallListener.on('value', (snap) => {
-                let callData = snap.val();
-                if(callData) {
-                    if(callData.status === 'ringing') {
-                        // Incoming call screen trigger
-                        document.getElementById('callUserTitle').innerText = callData.callerName;
-                        document.getElementById('callStatusText').innerText = "Incoming Voice Call...";
-                        document.getElementById('liveCallScreen').style.display = 'flex';
-
-                        let actionsArea = document.getElementById('callActionButtons');
-                        actionsArea.innerHTML = `
-                            <button class="call-btn btn-decline" onclick="endActiveCall('${currentUser.phone}')">✖ Reject</button>
-                            <button class="call-btn btn-accept" onclick="acceptIncomingCall('${currentUser.phone}')">✔ Accept</button>
-                        `;
-                    }
-                } else {
-                    document.getElementById('liveCallScreen').style.display = 'none';
-                }
-            });
-        }
-
-        function acceptIncomingCall(nodeId) {
-            db.ref('calls/' + nodeId).update({ status: 'accepted' });
-            document.getElementById('callStatusText').innerText = "Connected (In-Call Session Active)";
-            
-            let actionsArea = document.getElementById('callActionButtons');
-            actionsArea.innerHTML = `<button class="call-btn btn-decline" onclick="endActiveCall('${nodeId}')">❌ End Call</button>`;
-        }
-
-        function endActiveCall(nodeId) {
-            db.ref('calls/' + nodeId).remove();
-            document.getElementById('liveCallScreen').style.display = 'none';
-        }
-        // ===================================================================
-
-        function openAddModal() { document.getElementById('addModal').style.display = 'flex'; }
-        function closeAddModal() { document.getElementById('addModal').style.display = 'none'; }
-        function toggleAdminModal() { document.getElementById('adminModal').style.display = 'flex'; }
-        function closeAdminModal() { document.getElementById('adminModal').style.display = 'none'; }
-
-        function toggleModalFields() {
-            let type = document.getElementById('addType').value;
-            let input = document.getElementById('addNameInput');
-            input.placeholder = (type === 'contact') ? "Enter Phone Number" : "Enter Name";
-        }
-
-        function executeAddAction() {
-            let type = document.getElementById('addType').value;
-            let val = document.getElementById('addNameInput').value.trim();
-            if(!val) return;
-
-            if(type === 'contact') {
-                db.ref('users/' + val).once('value', (snapshot) => {
-                    if(!snapshot.exists()) {
-                        alert("This phone number is not registered!");
-                    } else {
-                        db.ref('userChats/' + currentUser.phone + '/contacts/' + val).set(snapshot.val().name);
-                        alert("Contact added!");
-                        closeAddModal();
-                    }
-                });
-            } else {
-                let refPath = type === 'group' ? 'groups' : 'channels';
-                let newId = (type === 'group' ? 'grp_' : 'chn_') + Date.now();
-                db.ref(refPath + '/' + newId).set({ name: val });
-                alert(`${type.toUpperCase()} created successfully!`);
-                closeAddModal();
-            }
-        }
-
-        function changeWebName() {
-            let name = document.getElementById('newAppName').value.trim();
-            if(!name) return;
-            db.ref('appSettings/name').set(name);
-            closeAdminModal();
-        }
-
-        function banUser() {
-            let phone = document.getElementById('banPhone').value.trim();
-            if(!phone || phone === ADMIN_NUMBER) return;
-            db.ref('banned/' + phone).set(true);
-            alert(`User ${phone} banned from platform.`);
-            closeAdminModal();
-        }
-    </script>
-</body>
-</html>
+            document.getElementById('msgInput').value = "
